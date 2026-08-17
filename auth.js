@@ -113,20 +113,30 @@ async function firebaseLoginUsername(username, password) {
         );
 
         const user = credential.user;
-        const snapshot = await db.ref('users/' + cleanUsername).once('value');
-        const profile = snapshot.val();
+        const admin = isAdminFirebaseUser(user);
+        let profile = {};
 
-        if (profile && profile.isBanned) {
-            await auth.signOut();
-            throw new Error('Akun Anda telah diblokir oleh Admin.');
+        // Admin identity is verified by Firebase Authentication UID.
+        // Do not require a readable users/paneladmin record for the admin login.
+        if (!admin) {
+            const snapshot = await db.ref('users/' + cleanUsername).once('value');
+            profile = snapshot.val();
+
+            if (!profile) {
+                await auth.signOut();
+                throw new Error('Profil akun tidak ditemukan di database.');
+            }
+            if (profile.isBanned) {
+                await auth.signOut();
+                throw new Error('Akun Anda telah diblokir oleh Admin.');
+            }
+            if (profile.uid && profile.uid !== user.uid) {
+                await auth.signOut();
+                throw new Error('Data akun tidak cocok.');
+            }
         }
 
-        if (profile && profile.uid && profile.uid !== user.uid) {
-            await auth.signOut();
-            throw new Error('Data akun tidak cocok.');
-        }
-
-        return { user, profile: profile || {}, isAdmin: isAdminFirebaseUser(user) };
+        return { user, profile, isAdmin: admin };
     } catch (error) {
         if (error && error.message && !String(error.message).startsWith('auth/')) {
             throw error;
