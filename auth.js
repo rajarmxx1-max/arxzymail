@@ -9,10 +9,15 @@ if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId
     console.error('[ARXZY] Firebase configuration is missing.');
 }
 
-if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+if (typeof firebase === 'undefined') {
+    throw new Error('Firebase SDK belum dimuat.');
+}
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) {
+    throw new Error('Konfigurasi Firebase tidak lengkap.');
+}
+if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
-
 window.__ARXZY_DB__ = firebase.database();
 
 let firebaseAuth = null;
@@ -101,7 +106,7 @@ async function firebaseRegisterUsername(username, password, profileData) {
             isBanned: false
         });
 
-        await db.ref('users/' + cleanUsername).set(safeProfile);
+        await window.__ARXZY_DB__.ref('users/' + cleanUsername).set(safeProfile);
         return user;
     } catch (error) {
         if (error && error.code && String(error.code).startsWith('auth/')) {
