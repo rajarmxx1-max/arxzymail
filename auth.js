@@ -1,22 +1,26 @@
 /* =========================================================
    AUTH.JS — FIREBASE AUTHENTICATION
-   Login/register menggunakan Firebase Authentication.
-   Tidak menggunakan Google Sign-In dan tidak menggunakan OTP.
+   Username/email + password. No Google, no OTP.
    ========================================================= */
 
-/* =========================================================
-   FIREBASE AUTHENTICATION
-   Username is mapped to a Firebase email alias because
-   Firebase Email/Password Authentication requires an email.
-   The real user's email is NOT required from the UI.
-   ========================================================= */
+const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase) || {};
+
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) {
+    console.error('[ARXZY] Firebase configuration is missing.');
+}
+
+if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+
+window.__ARXZY_DB__ = firebase.database();
 
 let firebaseAuth = null;
 
 function getFirebaseAuth() {
     if (!firebaseAuth) {
-        if (typeof firebase === 'undefined') {
-            throw new Error('Firebase SDK belum dimuat.');
+        if (typeof firebase === 'undefined' || !firebase.auth) {
+            throw new Error('Firebase Authentication SDK belum dimuat.');
         }
         firebaseAuth = firebase.auth();
     }
@@ -25,7 +29,12 @@ function getFirebaseAuth() {
 
 function usernameToAuthEmail(username) {
     const normalized = String(username || '').trim().toLowerCase();
+    if (normalized.includes('@')) return normalized;
     return normalized.replace(/[^a-z0-9._-]/g, '') + '@pikjamail.com';
+}
+
+function authIdentifierLabel(identifier) {
+    return String(identifier || '').trim().includes('@') ? 'email' : 'username';
 }
 
 function normalizeUsername(value) {
@@ -56,7 +65,8 @@ function firebaseAuthErrorMessage(error) {
         'auth/wrong-password': 'Username atau password salah.',
         'auth/invalid-credential': 'Username atau password salah.',
         'auth/too-many-requests': 'Terlalu banyak percobaan. Coba lagi beberapa saat.',
-        'auth/network-request-failed': 'Koneksi ke Firebase gagal.'
+        'auth/network-request-failed': 'Koneksi ke Firebase gagal.',
+        'auth/operation-not-allowed': 'Firebase Authentication Email/Password belum diaktifkan di Console.'
     };
     return messages[code] || (error && error.message) || 'Autentikasi gagal.';
 }
@@ -94,21 +104,24 @@ async function firebaseRegisterUsername(username, password, profileData) {
         await db.ref('users/' + cleanUsername).set(safeProfile);
         return user;
     } catch (error) {
-        throw new Error(firebaseAuthErrorMessage(error));
+        if (error && error.code && String(error.code).startsWith('auth/')) {
+            throw new Error(firebaseAuthErrorMessage(error));
+        }
+        throw error;
     }
 }
 
 async function firebaseLoginUsername(username, password) {
     const auth = getFirebaseAuth();
-    const cleanUsername = normalizeUsername(username);
+    const identifier = String(username || '').trim();
 
-    if (!cleanUsername || !password) {
-        throw new Error('Username dan password wajib diisi.');
+    if (!identifier || !password) {
+        throw new Error('Username/email dan password wajib diisi.');
     }
 
     try {
         const credential = await auth.signInWithEmailAndPassword(
-            usernameToAuthEmail(cleanUsername),
+            usernameToAuthEmail(identifier),
             password
         );
 
@@ -116,32 +129,42 @@ async function firebaseLoginUsername(username, password) {
         const admin = isAdminFirebaseUser(user);
         let profile = {};
 
-        // Admin identity is verified by Firebase Authentication UID.
-        // Do not require a readable users/paneladmin record for the admin login.
+        // Firebase displayName is the canonical username created by this app.
+        const canonicalUsername = normalizeUsername(
+            user.displayName || String(user.email || '').split('@')[0]
+        );
+
         if (!admin) {
-            const snapshot = await db.ref('users/' + cleanUsername).once('value');
+            const snapshot = await window.__ARXZY_DB__.ref('users/' + canonicalUsername).once('value');
             profile = snapshot.val();
 
             if (!profile) {
                 await auth.signOut();
                 throw new Error('Profil akun tidak ditemukan di database.');
             }
-            if (profile.isBanned) {
-                await auth.signOut();
-                throw new Error('Akun Anda telah diblokir oleh Admin.');
-            }
+
             if (profile.uid && profile.uid !== user.uid) {
                 await auth.signOut();
                 throw new Error('Data akun tidak cocok.');
             }
+
+            if (profile.isBanned) {
+                await auth.signOut();
+                throw new Error('Akun Anda telah diblokir oleh Admin.');
+            }
         }
 
-        return { user, profile, isAdmin: admin };
+        return {
+            user,
+            profile,
+            isAdmin: admin,
+            username: canonicalUsername
+        };
     } catch (error) {
-        if (error && error.message && !String(error.message).startsWith('auth/')) {
-            throw error;
+        if (error && error.code && String(error.code).startsWith('auth/')) {
+            throw new Error(firebaseAuthErrorMessage(error));
         }
-        throw new Error(firebaseAuthErrorMessage(error));
+        throw error;
     }
 }
 
@@ -154,3 +177,8 @@ async function firebaseLogout() {
 /* Fixed admin identity:
    Firebase Authentication UID: hUUBbw8j3JViM7ZBXJ52UWFp7go2
 */
+
+
+// Admin account requirement:
+// UID is fixed in admin-config.js. The Firebase Auth account must use
+// paneladmin@pikjamail.com if logging in with the username 'paneladmin'.
