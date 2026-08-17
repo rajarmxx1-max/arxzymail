@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Firebase Diagnostic</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="runtime-config.js"></script>
+</head>
+<body style="font-family:system-ui;padding:20px">
+<h2>Firebase Diagnostic</h2>
+<pre id="out">Memeriksa...</pre>
+<script>
+(async () => {
+  const out = document.getElementById('out');
+  try {
+    const cfg = window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase;
+    if (!cfg || !cfg.apiKey) throw new Error('runtime-config.js tidak terbaca');
+    firebase.initializeApp(cfg);
+    const auth = firebase.auth();
+    const db = firebase.database();
+    const lines = [
+      'Firebase config: OK',
+      'Project: ' + cfg.projectId,
+      'Database: ' + cfg.databaseURL,
+      'Auth SDK: OK',
+      'Current user: ' + (auth.currentUser ? auth.currentUser.uid : 'belum login')
+    ];
+    out.textContent = lines.join('\n');
+  } catch (e) {
+    out.textContent = 'ERROR: ' + (e && e.message ? e.message : e);
+  }
+})();
+</script>
+</body>
+</html>
