@@ -1,26 +1,28 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
+    "settings": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.uid === "hUUBbw8j3JViM7ZBXJ52UWFp7go2""
+    },
     "users": {
       "$username": {
-        ".read": "auth != null && ((auth.uid === data.child('uid').val() || auth.uid === 'hUUBbw8j3JViM7ZBXJ52UWFp7go2') || (data.exists() && data.child('role').val() === 'Admin' && (auth.uid === data.child('uid').val() || auth.uid === 'hUUBbw8j3JViM7ZBXJ52UWFp7go2')))",
-        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid && newData.child('role').val() === 'User') || (data.child('uid').val() === auth.uid && newData.child('uid').val() === auth.uid))"
+        ".read": "auth != null && (auth.uid === data.child("uid").val() || auth.uid === "hUUBbw8j3JViM7ZBXJ52UWFp7go2")",
+        ".write": "auth != null && (auth.uid === "hUUBbw8j3JViM7ZBXJ52UWFp7go2" || (!data.exists() && newData.child("uid").val() === auth.uid) || (data.child("uid").val() === auth.uid && newData.child("uid").val() === auth.uid))"
       }
     },
     "storan": {
       "$id": {
-        ".read": "auth != null",
-        ".write": "auth != null && (data.child('uid').val() === auth.uid || newData.child('uid').val() === auth.uid)"
+        ".read": "auth != null && (auth.uid === "hUUBbw8j3JViM7ZBXJ52UWFp7go2" || data.child("uid").val() === auth.uid)",
+        ".write": "auth != null && (auth.uid === "hUUBbw8j3JViM7ZBXJ52UWFp7go2" || (!data.exists() && newData.child("uid").val() === auth.uid) || (data.child("uid").val() === auth.uid && newData.child("uid").val() === auth.uid))"
       }
     },
     "tarik_dana": {
       "$id": {
-        ".read": "auth != null",
-        ".write": "auth != null && (data.child('uid').val() === auth.uid || newData.child('uid').val() === auth.uid)"
+        ".read": "auth != null && (auth.uid === "hUUBbw8j3JViM7ZBXJ52UWFp7go2" || data.child("uid").val() === auth.uid)",
+        ".write": "auth != null && (auth.uid === "hUUBbw8j3JViM7ZBXJ52UWFp7go2" || (!data.exists() && newData.child("uid").val() === auth.uid) || (data.child("uid").val() === auth.uid && newData.child("uid").val() === auth.uid))"
       }
-    },
-    "admin": {
-      ".read": false,
-      ".write": false
     }
   }
 }
