@@ -176,3 +176,37 @@ code{color:#ddd6fe!important;background:rgba(139,92,246,.12)!important;border:1p
 }
 ::selection{background:#8b5cf6;color:#fff}
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#38304e;border-radius:99px}
+
+
+/* ===== FINAL AUTH/NAV FIX ===== */
+.bottom-nav{
+  display:none !important;
+  position:fixed !important;
+  left:50% !important;
+  bottom:0 !important;
+  z-index:2000 !important;
+  width:min(100%,540px) !important;
+  transform:translateX(-50%) !important;
+  grid-template-columns:repeat(5,1fr) !important;
+  align-items:end !important;
+  gap:2px !important;
+  box-sizing:border-box !important;
+}
+.bottom-nav.active-nav{display:grid !important}
+.nav-item{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  min-width:0 !important;
+  min-height:58px !important;
+  padding:6px 2px !important;
+  margin:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  font-size:10px !important;
+  line-height:1.1 !important;
+}
+.nav-item span{display:block !important;white-space:nowrap !important}
+.nav-fab{width:42px !important;height:42px !important;display:flex !important;align-items:center !important;justify-content:center !important;border-radius:50% !important;margin-top:-18px !important}
+#view-auth .bottom-nav{display:none !important}
