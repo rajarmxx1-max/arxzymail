@@ -1,18 +1,14 @@
-const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase) || {};
+/* =========================================================
+   APP.JS — application/UI logic
+   Firebase initialization is owned by auth.js.
+   ========================================================= */
+const db = window.__ARXZY_DB__;
+if (!db) {
+    console.error('[ARXZY] Firebase Realtime Database belum siap. Pastikan auth.js dimuat sebelum app.js.');
+}
+if (typeof lucide !== 'undefined') lucide.createIcons();
 
-        window.__ARXZY_FIREBASE_CONFIG__ = firebaseConfig;
-
-        if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) {
-            console.error('[ARXZY] Firebase config belum tersedia.');
-        }
-
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-
-        lucide.createIcons();
-
-
-        const DEFAULT_RULES = `<h4>Rules / Aturan Storan Gmail</h4><ol style="padding-left: 16px; margin-top: 6px;"><li>Gmail Harus Fresh (Baru dibuat).</li><li>Format wajib: email@gmail.com|password (Password wajib: <b>sgsg1122</b>).</li><li>Wajib mengikuti format angka yang ditentukan sebelum @gmail.com.</li></ol>`;
+const DEFAULT_RULES = `<h4>Rules / Aturan Storan Gmail</h4><ol style="padding-left: 16px; margin-top: 6px;"><li>Gmail Harus Fresh (Baru dibuat).</li><li>Format wajib: email@gmail.com|password (Password wajib: <b>sgsg1122</b>).</li><li>Wajib mengikuti format angka yang ditentukan sebelum @gmail.com.</li></ol>`;
         const DEFAULT_NOTICE_BLUE = "<strong>Wajib akhiri angka 1-100</strong><br>Angka harus tepat sebelum @gmail.com, tanpa huruf/simbol setelahnya.";
         const DEFAULT_NOTICE_YELLOW = "<strong>Password wajib untuk Gmail yang disetor:</strong><br><code style='background: rgba(0,0,0,0.06); padding: 2px 4px; border-radius: 4px;'>sgsg1122</code>";
 
@@ -263,11 +259,11 @@ window.addEventListener('DOMContentLoaded', () => {
             const bottomNav = document.querySelector('.bottom-nav');
 
             if (viewId === 'view-auth') {
-                header.classList.remove('active-nav');
-                bottomNav.classList.remove('active-nav');
+                header?.classList.remove('active-nav');
+                bottomNav?.classList.remove('active-nav');
             } else {
-                header.classList.add('active-nav');
-                bottomNav.classList.add('active-nav');
+                header?.classList.add('active-nav');
+                bottomNav?.classList.add('active-nav');
             }
             document.body.classList.toggle('auth-screen', viewId === 'view-auth');
 
@@ -831,7 +827,7 @@ async function processLogin() {
         window.currentFirebaseProfile = result.profile;
 
         const isAdmin = !!result.isAdmin;
-        currentUser = isAdmin ? 'admin' : username;
+        currentUser = isAdmin ? 'admin' : (result.username || username);
 
         if (typeof navigateTo === 'function') {
             if (isAdmin) {
@@ -901,7 +897,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 window.currentFirebaseUser = user;
                 window.currentFirebaseProfile = profile || {};
-                currentUser = isAdmin ? 'admin' : username;
+                currentUser = isAdmin ? 'admin' : (result.username || username);
 
                 if (isAdmin) {
                     const panel = document.getElementById('admin-panel-container');
