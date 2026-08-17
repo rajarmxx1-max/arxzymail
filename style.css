@@ -210,3 +210,12 @@ code{color:#ddd6fe!important;background:rgba(139,92,246,.12)!important;border:1p
 .nav-item span{display:block !important;white-space:nowrap !important}
 .nav-fab{width:42px !important;height:42px !important;display:flex !important;align-items:center !important;justify-content:center !important;border-radius:50% !important;margin-top:-18px !important}
 #view-auth .bottom-nav{display:none !important}
+
+/* ===== HARD AUTH SCREEN VISIBILITY FIX ===== */
+body.auth-screen .bottom-nav,
+body.auth-screen .app-header {
+  display: none !important;
+}
+body:not(.auth-screen) .bottom-nav.active-nav {
+  display: grid !important;
+}
