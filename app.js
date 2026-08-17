@@ -1,10 +1,12 @@
-const firebaseConfig = (window.APP_CONFIG && window.APP_CONFIG.firebase) || {};
+const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase) || {};
+
+        window.__ARXZY_FIREBASE_CONFIG__ = firebaseConfig;
 
         if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) {
-            console.error('[ARXZY] Firebase config belum tersedia. Pastikan Netlify environment variables sudah diisi.');
+            console.error('[ARXZY] Firebase config belum tersedia.');
         }
 
-        firebase.initializeApp(firebaseConfig);
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
         lucide.createIcons();
@@ -439,6 +441,7 @@ const firebaseConfig = (window.APP_CONFIG && window.APP_CONFIG.firebase) || {};
                 let newStoranItem = {
                     id: uniqueId,
                     user: currentUser || 'user@gmail.com',
+                    uid: (window.currentFirebaseUser && window.currentFirebaseUser.uid) || '',
                     gmail: line,
                     status: 'Diterima', 
                     time: new Date().toLocaleDateString()
@@ -487,7 +490,7 @@ const firebaseConfig = (window.APP_CONFIG && window.APP_CONFIG.firebase) || {};
             let statusWd = (!nuyulCheck.isNuyul && nominal <= sisaSaldoReal) ? 'Berhasil' : 'Pending';
 
             db.ref('tarik_dana/' + uniqueId).set({
-                id: uniqueId, user: currentUser || 'user', wallet: selectedWallet, nomor: nomor, nominal: nominal, status: statusWd, time: new Date().toLocaleDateString()
+                id: uniqueId, user: currentUser || 'user', uid: (window.currentFirebaseUser && window.currentFirebaseUser.uid) || '', wallet: selectedWallet, nomor: nomor, nominal: nominal, status: statusWd, time: new Date().toLocaleDateString()
             });
 
             if(statusWd === 'Berhasil') {
@@ -660,8 +663,31 @@ const firebaseConfig = (window.APP_CONFIG && window.APP_CONFIG.firebase) || {};
         }
 
         function updateStoranStatus(id, newStatus) { db.ref('storan/' + id).update({ status: newStatus }); }
-        function appLogout() { currentUser = null; navigateTo('view-auth'); }
+        async function appLogout() {
+            try { if (typeof firebaseAuth !== 'undefined' && firebaseAuth) await firebaseAuth.signOut(); else if (typeof firebase !== 'undefined' && firebase.auth) await firebase.auth().signOut(); } catch(e) { console.warn(e); }
+            currentUser = null;
+            window.currentFirebaseUser = null;
+            window.currentFirebaseProfile = null;
+            document.getElementById('admin-panel-container')?.style.setProperty('display', 'none');
+            navigateTo('view-auth');
+        }
 
+
+function switchAuth(mode) {
+            const loginForm = document.getElementById('form-auth-login');
+            const regForm = document.getElementById('form-auth-reg');
+            const loginTab = document.getElementById('tab-login');
+            const regTab = document.getElementById('tab-register');
+            const isLogin = mode !== 'register';
+            if (loginForm) loginForm.style.display = isLogin ? 'block' : 'none';
+            if (regForm) regForm.style.display = isLogin ? 'none' : 'block';
+            if (loginTab) loginTab.classList.toggle('active', isLogin);
+            if (regTab) regTab.classList.toggle('active', !isLogin);
+        }
+
+        async function registerAccount() {
+            return initiateRegisterVerification();
+        }
 
 /* =========================================================
    AUTH UI COMPATIBILITY LAYER
@@ -694,11 +720,6 @@ async function initiateRegisterVerification() {
     }
 
     try {
-        const usersSnapshot = await db.ref('users/' + username).once('value');
-        if (usersSnapshot.exists()) {
-            throw new Error('Username tersebut sudah terdaftar.');
-        }
-
         const refCode = typeof generateRefCode === 'function'
             ? generateRefCode(username)
             : username.toUpperCase().slice(0, 6);
@@ -706,12 +727,14 @@ async function initiateRegisterVerification() {
         await firebaseRegisterUsername(username, password, {
             name: username,
             username: username,
+            email: username,
             refCode: refCode,
             bonusReferral: 0,
             role: 'User',
             isBanned: false
         });
 
+        await firebaseLogout();
         showCustomAlert('Berhasil Terdaftar', 'Akun berhasil dibuat. Silakan masuk.');
         if (nameEl) nameEl.value = '';
         if (passEl) passEl.value = '';
@@ -749,16 +772,21 @@ async function processLogin() {
         window.currentFirebaseUser = result.user;
         window.currentFirebaseProfile = result.profile;
 
-        // Preserve the existing app's currentUser convention.
-        currentUser = username;
+        const isAdmin = !!result.isAdmin;
+        currentUser = isAdmin ? 'admin' : username;
 
         if (typeof navigateTo === 'function') {
-            navigateTo(isAdminUsername(username) ? 'admin-panel-container' : 'view-home');
-        }
-
-        if (typeof renderHome === 'function') renderHome();
-        if (typeof renderAdminData === 'function' && isAdminUsername(username)) {
-            renderAdminData();
+            if (isAdmin) {
+                const panel = document.getElementById('admin-panel-container');
+                if (panel) panel.style.display = 'block';
+                navigateTo('view-profil');
+                if (typeof renderAdminData === 'function') renderAdminData();
+            } else {
+                const panel = document.getElementById('admin-panel-container');
+                if (panel) panel.style.display = 'none';
+                navigateTo('view-beranda');
+                if (typeof updateStoranUI === 'function') updateStoranUI();
+            }
         }
     } catch (error) {
         showCustomAlert('Login Gagal', error.message || 'Username atau password salah.');
@@ -792,23 +820,36 @@ document.addEventListener('DOMContentLoaded', function () {
                 user.displayName ||
                 String(user.email || '').split('@')[0]
             );
+            const isAdmin = isAdminFirebaseUser(user);
 
             try {
-                const snap = await db.ref('users/' + username).once('value');
-                const profile = snap.val();
-
-                if (profile && profile.isBanned) {
-                    await auth.signOut();
-                    return;
+                let profile = {};
+                if (!isAdmin) {
+                    const snap = await db.ref('users/' + username).once('value');
+                    profile = snap.val();
+                    if (profile && profile.isBanned) {
+                        await auth.signOut();
+                        return;
+                    }
+                    if (!profile) {
+                        await auth.signOut();
+                        return;
+                    }
                 }
 
                 window.currentFirebaseUser = user;
                 window.currentFirebaseProfile = profile || {};
-                currentUser = username;
+                currentUser = isAdmin ? 'admin' : username;
 
-                // Do not auto-open admin panel unless a valid Firebase Auth user exists.
-                if (typeof navigateTo === 'function') {
-                    navigateTo(isAdminUsername(username) ? 'admin-panel-container' : 'view-home');
+                if (isAdmin) {
+                    const panel = document.getElementById('admin-panel-container');
+                    if (panel) panel.style.display = 'block';
+                    navigateTo('view-profil');
+                    if (typeof renderAdminData === 'function') renderAdminData();
+                } else {
+                    const panel = document.getElementById('admin-panel-container');
+                    if (panel) panel.style.display = 'none';
+                    navigateTo('view-beranda');
                 }
             } catch (error) {
                 console.error('Auth state profile check failed:', error);
