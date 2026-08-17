@@ -25,48 +25,99 @@ const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase)
         let remoteUsers = [];
         let remoteStoran = [];
         let remoteTarik = [];
-        window.addEventListener('DOMContentLoaded', () => {
-            fetch('https://api.ipify.org?format=json')
-                .then(response => response.json())
-                .then(data => { if(data.ip) clientIpAddress = data.ip; })
-                .catch(() => {});
+        
+let dbListenerUnsubscribers = [];
 
-            const urlParams = new URLSearchParams(window.location.search);
-            referralCodeFromUrl = urlParams.get('ref');
-            if(referralCodeFromUrl) {
-                localStorage.setItem('pending_ref', referralCodeFromUrl);
-            }
+function setCurrentUser(username) {
+    currentUser = username || null;
+}
 
-            db.ref('settings').on('value', (snapshot) => {
-                remoteSettings = snapshot.val() || {};
-                applySettingsToUI();
-            });
+function stopDatabaseListeners() {
+    dbListenerUnsubscribers.forEach((off) => {
+        try { off(); } catch (_) {}
+    });
+    dbListenerUnsubscribers = [];
+    remoteSettings = {};
+    remoteUsers = [];
+    remoteStoran = [];
+    remoteTarik = [];
+}
 
-            db.ref('users').on('value', (snapshot) => {
-                let data = snapshot.val();
-                remoteUsers = data ? Object.values(data) : [
-                    { name: "Admin Utama", email: "admin", role: "Admin", refCode: "ADMINDAF", bonusReferral: 0, ipAddress: "127.0.0.1" }
-                ];
-                if(currentUser === 'admin') renderAdminData();
-            });
+function startDatabaseListeners(authUser, isAdmin, username) {
+    stopDatabaseListeners();
 
-            db.ref('storan').on('value', (snapshot) => {
-                let data = snapshot.val();
-                remoteStoran = data ? Object.values(data) : [];
-                updateStoranUI();
-                if(document.getElementById('view-riwayat').classList.contains('active-view')) renderUserRiwayat();
-                if(currentUser === 'admin') renderAdminData();
-            });
+    if (!authUser || !db) return;
 
-            db.ref('tarik_dana').on('value', (snapshot) => {
-                let data = snapshot.val();
-                remoteTarik = data ? Object.values(data) : [];
-                if(document.getElementById('view-saldo').classList.contains('active-view')) renderTarikRiwayat();
-                if(currentUser === 'admin') renderAdminData();
-            });
+    // Settings are readable by authenticated users.
+    const settingsRef = db.ref('settings');
+    const settingsHandler = (snapshot) => {
+        remoteSettings = snapshot.val() || {};
+        applySettingsToUI();
+    };
+    settingsRef.on('value', settingsHandler, (error) => {
+        console.warn('[ARXZY] settings read:', error.message);
+    });
+    dbListenerUnsubscribers.push(() => settingsRef.off('value', settingsHandler));
 
-            navigateTo('view-auth');
-        });
+    // Admin can read all users. A member reads only their own profile.
+    const usersRef = isAdmin ? db.ref('users') : db.ref('users/' + username);
+    const usersHandler = (snapshot) => {
+        if (isAdmin) {
+            const data = snapshot.val();
+            remoteUsers = data ? Object.values(data) : [];
+        } else {
+            const profile = snapshot.val();
+            remoteUsers = profile ? [profile] : [];
+        }
+
+        if (currentUser === 'admin') renderAdminData();
+        updateStoranUI();
+    };
+    usersRef.on('value', usersHandler, (error) => {
+        console.warn('[ARXZY] users read:', error.message);
+    });
+    dbListenerUnsubscribers.push(() => usersRef.off('value', usersHandler));
+
+    // Members use a UID-filtered query. Admin reads the complete collection.
+    const storanRef = isAdmin
+        ? db.ref('storan')
+        : db.ref('storan').orderByChild('uid').equalTo(authUser.uid);
+
+    const storanHandler = (snapshot) => {
+        const data = snapshot.val();
+        remoteStoran = data ? Object.values(data) : [];
+        updateStoranUI();
+        const riwayat = document.getElementById('view-riwayat');
+        if (riwayat && riwayat.classList.contains('active-view')) renderUserRiwayat();
+        if (currentUser === 'admin') renderAdminData();
+    };
+    storanRef.on('value', storanHandler, (error) => {
+        console.warn('[ARXZY] storan read:', error.message);
+    });
+    dbListenerUnsubscribers.push(() => storanRef.off('value', storanHandler));
+
+    const tarikRef = isAdmin
+        ? db.ref('tarik_dana')
+        : db.ref('tarik_dana').orderByChild('uid').equalTo(authUser.uid);
+
+    const tarikHandler = (snapshot) => {
+        const data = snapshot.val();
+        remoteTarik = data ? Object.values(data) : [];
+        const saldo = document.getElementById('view-saldo');
+        if (saldo && saldo.classList.contains('active-view')) renderTarikRiwayat();
+        if (currentUser === 'admin') renderAdminData();
+        updateStoranUI();
+    };
+    tarikRef.on('value', tarikHandler, (error) => {
+        console.warn('[ARXZY] tarik_dana read:', error.message);
+    });
+    dbListenerUnsubscribers.push(() => tarikRef.off('value', tarikHandler));
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    navigateTo('view-auth');
+});
+
 
         // FUNGSI MODAL ALERT KUSTOM YANG TERSTRUKTUR & RAPI
         function showCustomAlert(title, htmlContent) {
@@ -149,7 +200,7 @@ const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase)
             let cleanedCount = 0;
             users.forEach(u => {
                 if (u.email !== 'admin' && u.ipAddress && ipCounts[u.ipAddress] > 1) {
-                    db.ref('users/' + u.email.replace(/[\.\#\$\[\]]/g, '_')).update({ isBanned: true });
+                    db.ref('users/' + u.username).update({ isBanned: true });
                     cleanedCount++;
                 }
             });
@@ -164,7 +215,7 @@ const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase)
                 if (u.email !== 'admin') {
                     let nuyulCheck = detectNuyul(u, users);
                     if (nuyulCheck.isNuyul || nuyulCheck.isIpGanda) {
-                        db.ref('users/' + u.email.replace(/[\.\#\$\[\]]/g, '_')).remove();
+                        db.ref('users/' + u.username).remove();
                         deletedCount++;
                     }
                 }
@@ -218,11 +269,17 @@ const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase)
                 header.classList.add('active-nav');
                 bottomNav.classList.add('active-nav');
             }
+            document.body.classList.toggle('auth-screen', viewId === 'view-auth');
 
             window.scrollTo(0, 0);
             updateStoranUI();
             if (viewId === 'view-riwayat') renderUserRiwayat();
             if (viewId === 'view-saldo') renderTarikRiwayat();
+            const adminPanel = document.getElementById('admin-panel-container');
+            if (adminPanel) {
+                adminPanel.style.display = (currentUser === 'admin' && viewId === 'view-profil') ? 'block' : 'none';
+            }
+
             if (viewId === 'view-profil' || viewId === 'view-referral') {
                 renderUserProfilData();
                 if (currentUser === 'admin') renderAdminData();
@@ -237,13 +294,13 @@ const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase)
                 document.getElementById('profil-email').innerText = "admin@system.local";
                 document.getElementById('profil-referral-link').value = window.location.origin + window.location.pathname + "?ref=ADMINDAF";
             } else {
-                let found = users.find(u => u.email === currentUser);
+                let found = users.find(u => u.email === currentUser || u.username === currentUser);
                 if (found) {
                     document.getElementById('profil-nama').innerText = found.name;
                     document.getElementById('profil-email').innerText = found.email;
                     if(!found.refCode) {
                         found.refCode = generateRefCode(found.name);
-                        db.ref('users/' + found.email.replace(/[\.\#\$\[\]]/g, '_')).set(found);
+                        db.ref('users/' + found.username).set(found);
                     }
                     document.getElementById('profil-referral-link').value = window.location.origin + window.location.pathname + "?ref=" + found.refCode;
                 }
@@ -329,7 +386,7 @@ const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase)
             let totalBonusRef = 0;
             if(currentUser !== 'admin' && currentUser) {
                 let users = getUsers();
-                let foundUser = users.find(u => u.email === currentUser);
+                let foundUser = users.find(u => u.email === currentUser || u.username === currentUser);
                 if(foundUser) totalBonusRef = foundUser.bonusReferral || 0;
             }
 
@@ -471,7 +528,7 @@ const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase)
 
             let totalBonusRef = 0;
             let users = getUsers();
-            let foundUser = users.find(u => u.email === currentUser);
+            let foundUser = users.find(u => u.email === currentUser || u.username === currentUser);
             if(foundUser) totalBonusRef = foundUser.bonusReferral || 0;
 
             let totalPendapatanUser = totalSaldoStoran + totalBonusRef;
@@ -659,13 +716,14 @@ const firebaseConfig = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.firebase)
         }
 
         function toggleBanUser(email, banStatus) {
-            db.ref('users/' + email.replace(/[\.\#\$\[\]]/g, '_')).update({ isBanned: banStatus });
+            db.ref('users/' + String(email).toLowerCase()).update({ isBanned: banStatus });
         }
 
         function updateStoranStatus(id, newStatus) { db.ref('storan/' + id).update({ status: newStatus }); }
         async function appLogout() {
             try { if (typeof firebaseAuth !== 'undefined' && firebaseAuth) await firebaseAuth.signOut(); else if (typeof firebase !== 'undefined' && firebase.auth) await firebase.auth().signOut(); } catch(e) { console.warn(e); }
             currentUser = null;
+            stopDatabaseListeners();
             window.currentFirebaseUser = null;
             window.currentFirebaseProfile = null;
             document.getElementById('admin-panel-container')?.style.setProperty('display', 'none');
@@ -789,7 +847,11 @@ async function processLogin() {
             }
         }
     } catch (error) {
-        showCustomAlert('Login Gagal', error.message || 'Username atau password salah.');
+        let message = error.message || 'Username atau password salah.';
+        if (username === 'paneladmin' && /user-not-found|invalid-credential|wrong-password|Username atau password/i.test(message)) {
+            message = 'Akun admin Firebase harus memiliki email paneladmin@pikjamail.com jika login menggunakan username paneladmin. UID admin yang diizinkan: hUUBbw8j3JViM7ZBXJ52UWFp7go2';
+        }
+        showCustomAlert('Login Gagal', message);
     } finally {
         if (btn) {
             btn.disabled = false;
